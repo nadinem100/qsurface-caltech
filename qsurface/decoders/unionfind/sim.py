@@ -4,7 +4,11 @@ from ...codes.elements import AncillaQubit, Edge, PseudoQubit
 from .elements import Cluster
 from .._template import Sim
 from collections import defaultdict
-
+from ..mwpm.sim import Planar as PlanarMWPM
+import networkx as nx
+import matplotlib.pyplot as plt
+from pyvis.network import Network
+import numpy as np
 
 class Toric(Sim):
     """Union-Find decoder for the toric lattice.
@@ -124,13 +128,73 @@ class Toric(Sim):
         self.support = {edge: 0 for edge in self.support}
         self.find_clusters(**kwargs)
         self.grow_clusters(**kwargs)
+        # at this point, self.clusters is the updated clusters!!
+
+        phi = self.calc_phi()
+
         self.peel_clusters(**kwargs)
+
+        return phi
 
     """
     -------------------------------------------------------------------------------------------
                                     General helper functions
     -------------------------------------------------------------------------------------------
     """
+
+    def calc_phi(self):
+        # Part 1: getting the edges
+        edges = list(self.support.keys())
+
+        G = nx.Graph()
+        boundary_nodes = set()
+        for edge in edges:
+            if edge.state_type == 'x':
+                # collect boundary nodes
+                if edge.nodes[0].qubit_type == 'pA':
+                    boundary_nodes.add(edge.nodes[0])
+                if edge.nodes[1].qubit_type == 'pA':
+                    boundary_nodes.add(edge.nodes[1])
+
+                # actually add the edge
+                if self.support[edge] == 2:
+                    G.add_edge(edge.nodes[0], edge.nodes[1], weight=0)
+                else:
+                    p = self.code.error_rates['p_bitflip']
+                    G.add_edge(edge.nodes[0], edge.nodes[1], weight=-np.log(p / (1 - p)))
+                # some may have the same pA (boundary node) which is good
+
+        # connect boundary nodes on the same side into 1 node
+        for elem1 in boundary_nodes:
+            for elem2 in boundary_nodes:
+                if elem1 != elem2:
+                    # if vertical, change loc[0] to loc[1]
+                    if (elem1.loc[0] == 0 and elem2.loc[0] == 0) or (elem1.loc[0] != 0 and elem2.loc[0] != 0):
+                        G.add_edge(elem1, elem2, weight=0)
+                        if elem1.loc[0] != 0 and elem2.loc[0] != 0:
+                            assert(elem1.loc[0] == self.code.size[0] and elem2.loc[0] == self.code.size[0])
+                        assert (elem1.loc[0] == elem2.loc[0])  # they should be the same nonzero value, probably d tbh
+
+        # call dijkstras
+        # get s & t nodes
+        for elem in boundary_nodes:
+            # arbitrarily pick one to be the
+            if elem.loc[0] == 0 and elem.loc[1] == 0:
+                s = elem
+            elif elem.loc[1] == 0:
+                t = elem
+        length, path = nx.single_source_dijkstra(G, s, t)
+        # print(length, path)
+
+        # # visualize for debugging
+        # plt.figure()
+        # pos = nx.spring_layout(G)
+        # nx.draw(G, pos, with_labels=True)
+        # labels = nx.get_edge_attributes(G, 'weight')
+        # nx.draw_networkx_edge_labels(G, pos, edge_labels=labels)
+        # plt.show()
+
+        return length
 
     def get_cluster(self, ancilla: AncillaQubit) -> Optional[Cluster]:
         """Returns the cluster to which ``ancilla`` belongs to.

@@ -168,16 +168,18 @@ def run(
 
     output = {"no_error": 0}
 
+    code.error_rates = error_rates
+
     for iteration in range(iterations):
-        print(f"Running iteration {iteration+1}/{iterations}", end="\r")
+        # print(f"Running iteration {iteration+1}/{iterations}", end="\r")
         code.random_errors(**error_rates)
-        decoder.decode(**kwargs)
+        output["phi"] = decoder.decode(**kwargs)
         code.logical_state  # Must get logical state property to update code.no_error
         output["no_error"] += code.no_error
         if hasattr(code, "figure"):
             code.show_corrected()
 
-    print()  # for newline after /r
+    # print()  # for newline after /r
 
     if hasattr(code, "figure"):
         code.figure.close()
@@ -192,6 +194,7 @@ def run(
         return output
     else:
         mp_queue.put(output)
+
 
 
 def run_multiprocess(

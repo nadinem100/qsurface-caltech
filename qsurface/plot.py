@@ -191,7 +191,7 @@ class Template2D(ABC):
     history_dict : `.collections.defaultdict`
         For each iteration, for every plot object with changed properties, the properties are stored as a nested dictionary. See the example below.
 
-            >>> history_dict = {
+            # >>> history_dict = {
                     0: {
                         "<Line2D object>": {
                             "color": "k",
@@ -239,15 +239,15 @@ class Template2D(ABC):
     --------
     A `matplotlib.lines.Line2D` object is initiated with ``color="k"`` and ``ls="-"``. We request that the color of the object is red in a new plot iteration.
 
-        >>> import matplotlib.pyplot as plt
-        ... class Example(Template2D):
-        ...     def __init__(self, *args, **kwargs):
-        ...         super().__init__(*args, **kwargs)
-        ...         self.line = plt.plot(0, 0, color="k", ls="-")[0]    # Line located at [0] after plot
-        >>> fig = Example()
-        >>> fig.new_properties(fig.line, {"color": "r})
-        >>> fig.new_iter()
-        >>> fig.history_dict
+        # >>> import matplotlib.pyplot as plt
+        # ... class Example(Template2D):
+        # ...     def __init__(self, *args, **kwargs):
+        # ...         super().__init__(*args, **kwargs)
+        # ...         self.line = plt.plot(0, 0, color="k", ls="-")[0]    # Line located at [0] after plot
+        # >>> fig = Example()
+        # >>> fig.new_properties(fig.line, {"color": "r})
+        # >>> fig.new_iter()
+        # >>> fig.history_dict
         {
             0: {"<Line2D>": {"color": "k"}},
             1: {"<Line2D>": {"color": "r"}},
@@ -255,9 +255,9 @@ class Template2D(ABC):
 
     The attribute ``self.history_dict`` thus only contain changes to plot properties. If we request another iteration but change the linestyle to ":", the initial linestyle will be saved to iteration 1.
 
-        >>> fig.new_properties(fig.line, {"ls": ":"})
-        >>> fig.new_iter()
-        >>> fig.history_dict
+        # >>> fig.new_properties(fig.line, {"ls": ":"})
+        # >>> fig.new_iter()
+        # >>> fig.history_dict
         {
             0: {"<Line2D>": {"color": "k"}},
             1: {"<Line2D>": {"color": "r", "ls: "-"}},
@@ -266,15 +266,15 @@ class Template2D(ABC):
 
     We temporarily alter the linewidth to 2, and then to 1.5. After we are satisfied with the temporary changes. we request a new iteration with the final change of color to green.
 
-        >>> fig.temporary_properties(fig.line, {"lw": 2})
-        >>> fig.temporary_properties(fig.line, {"lw": 1.5})
-        >>> fig.temporary_changes
-        {"<Line2D>": {"lw": 1.5}}
-        >>> fig.temporary_saved
-        {"<Line2D>": {"lw": 1}}      # default value
-        >>> fig.new_properties(fig.line, {"color": "g"})
-        >>> fig.new_iter()
-        >>> fig.history_dict
+        # >>> fig.temporary_properties(fig.line, {"lw": 2})
+        # >>> fig.temporary_properties(fig.line, {"lw": 1.5})
+        # >>> fig.temporary_changes
+        # {"<Line2D>": {"lw": 1.5}}
+        # >>> fig.temporary_saved
+        # {"<Line2D>": {"lw": 1}}      # default value
+        # >>> fig.new_properties(fig.line, {"color": "g"})
+        # >>> fig.new_iter()
+        # >>> fig.history_dict
         {
             0: {"<Line2D>": {"color": "k"}},
             1: {"<Line2D>": {"color": "r", "ls: "-", "lw": 1}},
@@ -355,29 +355,39 @@ class Template2D(ABC):
 
         If the Tkinter backend is enabled or can be enabled, the function returns True. For other backends False is returned.
         """
+        mpl.use('Qt5Agg')
+
         backend = mpl.get_backend().lower()
+        print('python backend????', backend)
+
         if backend in ["tkagg", "qt5agg"]:
+            print('not heier', backend)
+
             return True
         elif "inline" in backend:
+            print("ok so here??")
             from IPython.display import display
-
             self.display = display
         else:
             DISPLAY = os.environ.get("DISPLAY", None)
             if DISPLAY:
+                print("are we even in here")
                 try:
                     mpl.use("TkAgg")
+                    print("are we using TkAGG")
                     return True
                 except ImportError:
                     pass
                 try:
                     mpl.use("Qt5Agg")
+                    print("or are we using Qt5Agg")
                     return True
                 except ImportError:
                     pass
 
                 print(f"Matplotlib is using {backend} backend, which is not supported.")
             else:
+                print('oh here')
                 print(f"Display {DISPLAY} not available. Interactive plotting is disabled.")
         return False
 
