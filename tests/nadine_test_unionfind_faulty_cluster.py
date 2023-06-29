@@ -38,14 +38,14 @@ for d in ds:
             elif output['no_error'] == 0:
                 final_dict_failure[output['phi']] += 1
         end = time.time()
-        print('FINAL no failure dict: \n', final_dict_nofailure)
-        print('FINAL failure dict: \n', final_dict_failure)
+        print('FINAL no failure dict: \n', 'd: ', d, 'p: ', p, '\n', final_dict_nofailure, '\n')
+        print('FINAL failure dict: \n', 'd: ', d, 'p: ', p, '\n', final_dict_failure, '\n')
 
         # save it
         json_str = json.dumps(final_dict_nofailure)
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        file_name = f"data/d{d}_nofailure_p_{p}_num{itera}_{timestamp}.txt"
-        file_name2 = f"data/d{d}_failure_p_{p}_num{itera}_{timestamp}.txt"
+        file_name = f"data_cluster/d{d}_nofailure_p_{p}_num{itera}_{timestamp}.txt"
+        file_name2 = f"data_cluster/d{d}_failure_p_{p}_num{itera}_{timestamp}.txt"
         with open(file_name, "w") as file:
             file.write(json_str)
 
