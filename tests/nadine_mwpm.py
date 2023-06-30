@@ -44,8 +44,8 @@ for d in ds:
         # save it
         json_str = json.dumps(final_dict_nofailure)
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        file_name = f"data_mwpm_sub/d{d}_nofailure_p_{p}_num{itera}_{timestamp}.txt"
-        file_name2 = f"data_mwpm_sub/d{d}_failure_p_{p}_num{itera}_{timestamp}.txt"
+        file_name = f"data_mwpm_new/d{d}_nofailure_p_{p}_num{itera}_{timestamp}.txt"
+        file_name2 = f"data_mwpm_new/d{d}_failure_p_{p}_num{itera}_{timestamp}.txt"
         with open(file_name, "w") as file:
             file.write(json_str)
 

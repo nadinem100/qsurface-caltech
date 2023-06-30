@@ -216,9 +216,17 @@ class Planar(Toric):
         # self.correct_matching(stars, self.match_syndromes(stars, **kwargs))
 
         p = self.code.error_rates['p_bitflip']
-        phi = self.calc_phi() + weight*np.log(p / (1 - p))
+        phi = self.calc_phi()# + weight*np.log(p / (1 - p))
 
         return phi
+
+    def get_weight(self, a0, a1):
+        (x0, y0), z0 = a0.loc, a0.z
+        (x1, y1), z1 = a1.loc, a1.z
+        wx = int(abs(x0 - x1))
+        wy = int(abs(y0 - y1))
+        wz = int(abs(z0 - z1))
+        return wy + wx + wz
 
     def calc_phi(self):
         # Part 1: getting the edges
@@ -250,7 +258,12 @@ class Planar(Toric):
         # print('self.ancillas_matchingind', self.ancillas_matchingind)
         for node0, node1 in self.matching:
             if self.boundary_info[node0] == '' or self.boundary_info[node1] == '':
-                G.add_edge(self.ancillas_matchingind[node0], self.ancillas_matchingind[node1], weight=0)
+                edge_weight = self.get_weight(self.ancillas_matchingind[node0], self.ancillas_matchingind[node1])
+                for dq_edge in edges:
+                    for a in [node0, node1]:
+                        for b in dq_edge.nodes:
+                            if self.get_weight(self.ancillas_matchingind[a], b) < edge_weight/2:
+                                G.add_edge(self.ancillas_matchingind[a], b, weight=0)
 
         # connect boundary nodes on the same side into 1 node
         for elem1 in boundary_nodes:
