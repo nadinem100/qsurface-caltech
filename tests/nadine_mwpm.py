@@ -5,7 +5,7 @@ from collections import defaultdict
 import json
 from datetime import datetime
 
-ds = [5, 6, 7, 8, 9]
+ds = [5, 7, 9, 11, 13, 15, 17, 19, 21]
 ps = [0.02]
 itera = 10000
 
@@ -44,8 +44,8 @@ for d in ds:
         # save it
         json_str = json.dumps(final_dict_nofailure)
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        file_name = f"data_mwpm/d{d}_nofailure_p_{p}_num{itera}_{timestamp}.txt"
-        file_name2 = f"data_mwpm/d{d}_failure_p_{p}_num{itera}_{timestamp}.txt"
+        file_name = f"data_mwpm_sub/d{d}_nofailure_p_{p}_num{itera}_{timestamp}.txt"
+        file_name2 = f"data_mwpm_sub/d{d}_failure_p_{p}_num{itera}_{timestamp}.txt"
         with open(file_name, "w") as file:
             file.write(json_str)
 

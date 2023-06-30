@@ -212,10 +212,11 @@ class Planar(Toric):
     def decode(self, **kwargs):
         # Inherited docstring
         plaqs, stars = self.get_syndrome(find_pseudo=True)
-        self.correct_matching(plaqs, self.match_syndromes(plaqs, **kwargs))
+        weight = self.correct_matching(plaqs, self.match_syndromes(plaqs, **kwargs))
         # self.correct_matching(stars, self.match_syndromes(stars, **kwargs))
 
-        phi = self.calc_phi()
+        p = self.code.error_rates['p_bitflip']
+        phi = self.calc_phi() + weight*np.log(p / (1 - p))
 
         return phi
 
