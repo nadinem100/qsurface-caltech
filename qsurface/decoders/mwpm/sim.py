@@ -5,7 +5,9 @@ import networkx as nx
 from numpy.ctypeslib import ndpointer
 import ctypes
 import os
-
+import matplotlib.pyplot as plt
+import numpy as np
+from itertools import chain
 
 LA = List[AncillaQubit]
 
@@ -91,7 +93,17 @@ class Toric(Sim):
         nxgraph = nx.Graph()
         for i0, i1, weight in edges:
             nxgraph.add_edge(i0, i1, weight=-weight)
+
+        # # visualize for debugging
+        # plt.figure()
+        # pos = nx.spring_layout(nxgraph)
+        # nx.draw(nxgraph, pos, with_labels=True)
+        # labels = nx.get_edge_attributes(nxgraph, 'weight')
+        # nx.draw_networkx_edge_labels(nxgraph, pos, edge_labels=labels)
+        # plt.show()
+
         return nx.algorithms.matching.max_weight_matching(nxgraph, maxcardinality=maxcardinality)
+        # return nx.algorithms.matching.min_weight_matching(nxgraph, maxcardinality=maxcardinality)
 
     @staticmethod
     def match_blossomv(edges: list, num_nodes: float = 0, **kwargs) -> list:
@@ -201,7 +213,105 @@ class Planar(Toric):
         # Inherited docstring
         plaqs, stars = self.get_syndrome(find_pseudo=True)
         self.correct_matching(plaqs, self.match_syndromes(plaqs, **kwargs))
-        self.correct_matching(stars, self.match_syndromes(stars, **kwargs))
+        # self.correct_matching(stars, self.match_syndromes(stars, **kwargs))
+
+        phi = self.calc_phi()
+
+        return phi
+
+    def calc_phi(self):
+        # Part 1: getting the edges
+        values = self.code.data_qubits.values()
+        inner_values = [inner_dict.values() for inner_dict in values]
+        all_dqs = list(chain.from_iterable(inner_values))
+        edges = [dq.edges['x'] for dq in all_dqs]
+
+        G = nx.Graph()
+
+        boundary_nodes = set()
+        for edge in edges:
+            if edge.state_type == 'x':
+                # collect boundary nodes
+                if edge.nodes[0].qubit_type == 'pA':
+                    boundary_nodes.add(edge.nodes[0])
+                if edge.nodes[1].qubit_type == 'pA':
+                    boundary_nodes.add(edge.nodes[1])
+
+                # actually add the edge
+                p = self.code.error_rates['p_bitflip']
+                G.add_edge(edge.nodes[0], edge.nodes[1], weight=-np.log(p / (1 - p)))
+
+        # if in the matching and both are not boundary nodes, give it weight 0
+        # print('-----------')
+        # print(self.code.ancilla_qubits)
+        # print(self.code.pseudo_qubits)
+        # print(self.matching)
+        # print('self.ancillas_matchingind', self.ancillas_matchingind)
+        for node0, node1 in self.matching:
+            if self.boundary_info[node0] == '' or self.boundary_info[node1] == '':
+                G.add_edge(self.ancillas_matchingind[node0], self.ancillas_matchingind[node1], weight=0)
+
+        # connect boundary nodes on the same side into 1 node
+        for elem1 in boundary_nodes:
+            for elem2 in boundary_nodes:
+                if elem1 != elem2:
+                    # if vertical, change loc[0] to loc[1]
+                    if (elem1.loc[0] == 0 and elem2.loc[0] == 0) or (elem1.loc[0] != 0 and elem2.loc[0] != 0):
+                        G.add_edge(elem1, elem2, weight=0)
+                        if elem1.loc[0] != 0 and elem2.loc[0] != 0:
+                            assert(elem1.loc[0] == self.code.size[0] and elem2.loc[0] == self.code.size[0])
+                        assert (elem1.loc[0] == elem2.loc[0])  # they should be the same nonzero value, probably d tbh
+
+        # call dijkstras
+        # get s & t nodes
+        for elem in boundary_nodes:
+            # arbitrarily pick one to be the
+            if elem.loc[0] == 0 and elem.loc[1] == 0:
+                s = elem
+            elif elem.loc[1] == 0:
+                t = elem
+        length, path = nx.single_source_dijkstra(G, s, t)
+        # print(length, path)
+
+        # # visualize for debugging
+        # plt.figure()
+        # pos = nx.spring_layout(G)
+        # nx.draw(G, pos, with_labels=True)
+        # labels = nx.get_edge_attributes(G, 'weight')
+        # nx.draw_networkx_edge_labels(G, pos, edge_labels=labels)
+        # plt.show()
+
+        return length
+
+    def match_syndromes(self, syndromes: LA, use_blossomv: bool = False, **kwargs) -> list:
+        """Decodes a list of syndromes of the same type.
+
+        A graph is constructed with the syndromes in ``syndromes`` as nodes and the distances between each of the syndromes as the edges. The distances are dependent on the boundary conditions of the code and is calculated by `get_qubit_distances`. A minimum-weight matching is then found by either `match_networkx` or `match_blossomv`.
+
+        Parameters
+        ----------
+        syndromes
+            Syndromes of the code.
+        use_blossomv
+            Use external C++ Blossom V library for minimum-weight matching. Needs to be downloaded and compiled by calling `.get_blossomv`.
+
+        Returns
+        -------
+        list of `~.codes.elements.AncillaQubit`
+            Minimum-weight matched ancilla-qubits.
+
+        """
+        matching_graph = self.match_blossomv if use_blossomv else self.match_networkx
+        self.edges = self.get_qubit_distances(syndromes, self.code.size)
+        self.matching = matching_graph(
+            self.edges,
+            maxcardinality=self.config["max_cardinality"],
+            num_nodes=len(syndromes),
+            **kwargs,
+        )
+
+        return self.matching
+
 
     def correct_matching(self, syndromes: List[Tuple[AncillaQubit, AncillaQubit]], matching: list):
         # Inherited docstring
@@ -213,17 +323,20 @@ class Planar(Toric):
                 weight += self._correct_matched_qubits(aq0, aq1)
         return weight
 
-    @staticmethod
-    def get_qubit_distances(qubits, *args):
+    def get_qubit_distances(self, qubits, *args):
         """Computes the distance between a list of qubits.
 
         On a planar lattice, any qubit can be paired with the boundary, which is inhabited by `~.codes.elements.PseudoQubit` objects. The graph of syndromes that supports minimum-weight matching algorithms must be fully connected, with each syndrome connecting additionally to its boundary pseudo-qubit, and a fully connected graph between all pseudo-qubits with weight 0.
         """
         edges = []
-
+        self.boundary_info = [''] * (2*len(qubits)) # index = node #, value = L or R
+        self.ancillas_matchingind = [None] * (2*len(qubits))
+        # if len(qubits) == 1:
+        #     print('qubits', qubits)
         # Add edges between all ancilla-qubits
         for i0, (a0, _) in enumerate(qubits):
             (x0, y0), z0 = a0.loc, a0.z
+            self.ancillas_matchingind[i0] = a0
             for i1, (a1, _) in enumerate(qubits[i0 + 1 :], start=i0 + 1):
                 (x1, y1), z1 = a1.loc, a1.z
                 wx = int(abs(x0 - x1))
@@ -231,6 +344,7 @@ class Planar(Toric):
                 wz = int(abs(z0 - z1))
                 weight = wy + wx + wz
                 edges.append([i0, i1, weight])
+                self.ancillas_matchingind[i1] = a1
 
         # Add edges between ancilla-qubits and their boundary pseudo-qubits
         for i, (ancilla, pseudo) in enumerate(qubits):
@@ -238,10 +352,18 @@ class Planar(Toric):
             (xb, yb) = pseudo.loc
             weight = xb - xs if ancilla.state_type == "x" else yb - ys
             edges.append([i, len(qubits) + i, int(abs(weight))])
+            if xb == 0:
+                self.boundary_info[len(qubits) + i] = 'L'
+            else:
+                self.boundary_info[len(qubits) + i] = 'R'
+            self.ancillas_matchingind[len(qubits) + i] = pseudo
+
+        # self.m = pymatching.Matching()
+        # self.m.set_boundary_nodes(set(range(len(qubits), 2*len(qubits))))
 
         # Add edges of weight 0 between all pseudo-qubits
-        for i0 in range(len(qubits), len(qubits)):
-            for i1 in range(i0 + 1, len(qubits) - 1):
+        for i0 in range(len(qubits), 2*len(qubits)):
+            for i1 in range(i0 + 1, 2*len(qubits)):
                 edges.append([i0, i1, 0])
         return edges
 
