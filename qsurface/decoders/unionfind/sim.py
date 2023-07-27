@@ -9,6 +9,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from pyvis.network import Network
 import numpy as np
+import time
 
 class Toric(Sim):
     """Union-Find decoder for the toric lattice.
@@ -121,6 +122,7 @@ class Toric(Sim):
         kwargs
             Keyword arguments are passed on to `find_clusters`, `grow_clusters` and `peel_clusters`.
         """
+        # t00 = time.time()
         self.buckets = defaultdict(list)
         self.bucket_max_filled = 0
         self.cluster_index = 0
@@ -129,10 +131,14 @@ class Toric(Sim):
         self.find_clusters(**kwargs)
         self.grow_clusters(**kwargs)
         # at this point, self.clusters is the updated clusters!!
-
+        # t0 = time.time()
         phi = self.calc_phi()
+        # t1 = time.time()
+        # print('calc phi time: ', t1 - t0)
 
         self.peel_clusters(**kwargs)
+        # timef = time.time()
+        # print('whole process', timef - t00)
 
         return phi
 
@@ -142,10 +148,54 @@ class Toric(Sim):
     -------------------------------------------------------------------------------------------
     """
 
+    # @njit
     def calc_phi(self):
         # Part 1: getting the edges
-        edges = list(self.support.keys())
+        # t01 = time.time()
+        edges = [i for i in self.support.keys() if i.state_type == 'x']
+        # t1 = time.time()
+        # print('building list of edges', t1 - t01)
+        p = self.code.error_rates['p_bitflip']
+        G = nx.Graph()
 
+        # edges_graph = np.empty(len(edges), dtype = object)
+        for i, edge in enumerate(edges):
+            # collect boundary nodes
+            if edge.nodes[0].qubit_type == 'pA': # the boundary nodes only show up in the first index
+                node0 = edge.nodes[0].loc[0]
+            else:
+                node0 = edge.nodes[0]
+            node1 = edge.nodes[1]
+
+            if self.support[edge] == 2:
+                w = 0
+            else:
+                w = 1
+
+            # actually add the edge
+            # edges_graph[i] = (node0, node1, {'weight':w})
+            G.add_edge(node0, node1, weight=w)
+
+        # # list comprehension is like the same speed
+        # edges_graph = [(edge.nodes[0].loc[0] if edge.nodes[0].qubit_type == 'pA' else edge.nodes[0], edge.nodes[1], {'weight': 0 if self.support[edge] == 2 else 1}) for edge in self.support.keys() if edge.state_type == 'x']
+        # G.add_edges_from(edges_graph)
+        # t2 = time.time()
+        # print('generating graph: ', t2-t1)
+
+        # get shortest path
+        d = self.code.size[0]
+        length = nx.shortest_path_length(G, 0, d, weight='weight')
+        # t3 = time.time()
+        # print('running dijkstras: ', t3-t2)
+
+        # print('length', length)
+        return length*np.log((1-p)/p)
+
+    def calc_phi_slow(self):
+        # Part 1: getting the edges
+        edges = list(self.support.keys())
+        p = self.code.error_rates['p_bitflip']
+        # t1 = time.time()
         G = nx.Graph()
         boundary_nodes = set()
         for edge in edges:
@@ -160,10 +210,11 @@ class Toric(Sim):
                 if self.support[edge] == 2:
                     G.add_edge(edge.nodes[0], edge.nodes[1], weight=0)
                 else:
-                    p = self.code.error_rates['p_bitflip']
+
                     G.add_edge(edge.nodes[0], edge.nodes[1], weight=-np.log(p / (1 - p)))
                 # some may have the same pA (boundary node) which is good
-
+        t15 = time.time()
+        # print('pre boundary nodes', t15 - t1)
         # connect boundary nodes on the same side into 1 node
         for elem1 in boundary_nodes:
             for elem2 in boundary_nodes:
@@ -171,10 +222,8 @@ class Toric(Sim):
                     # if vertical, change loc[0] to loc[1]
                     if (elem1.loc[0] == 0 and elem2.loc[0] == 0) or (elem1.loc[0] != 0 and elem2.loc[0] != 0):
                         G.add_edge(elem1, elem2, weight=0)
-                        if elem1.loc[0] != 0 and elem2.loc[0] != 0:
-                            assert(elem1.loc[0] == self.code.size[0] and elem2.loc[0] == self.code.size[0])
-                        assert (elem1.loc[0] == elem2.loc[0])  # they should be the same nonzero value, probably d tbh
-
+        t2 = time.time()
+        # print('boundary nodes: ', t2-t15)
         # call dijkstras
         # get s & t nodes
         for elem in boundary_nodes:
@@ -184,15 +233,9 @@ class Toric(Sim):
             elif elem.loc[1] == 0:
                 t = elem
         length, path = nx.single_source_dijkstra(G, s, t)
-        # print(length, path)
+        # t3 = time.time()
+        # print('running dijkstras: ', t3-t2)
 
-        # # visualize for debugging
-        # plt.figure()
-        # pos = nx.spring_layout(G)
-        # nx.draw(G, pos, with_labels=True)
-        # labels = nx.get_edge_attributes(G, 'weight')
-        # nx.draw_networkx_edge_labels(G, pos, edge_labels=labels)
-        # plt.show()
 
         return length
 
